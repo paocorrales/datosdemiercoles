@@ -1,0 +1,95 @@
+---
+title: "20191009_clarisLPB"
+author: "Pao"
+date: "10/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(gganimate)
+library(metR)
+library(magick)
+```
+
+## Claris LPB
+
+```{r}
+estaciones <- readr::read_csv("https://raw.githubusercontent.com/cienciadedatos/datos-de-miercoles/master/datos/2019/2019-10-09/estaciones.csv",
+                              locale = readr::locale(encoding = "latin1"))
+meteo <- readr::read_csv("https://raw.githubusercontent.com/cienciadedatos/datos-de-miercoles/master/datos/2019/2019-10-09/meteo.csv",
+                         na = "-99.9")
+```
+
+```{r wrange}
+ubicacion <- estaciones %>% 
+  select(c("id_estacion", "lat", "lon"))
+
+# meteo_mean <- meteo %>% 
+#   mutate(tmean = (t_max + t_min)/2) %>% 
+#   group_by(fecha = floor_date(fecha, "month"), id_estacion) %>%
+#   summarise(tmean_mensual = mean(tmean, na.rm = TRUE)) %>% 
+#   group_by(mes = month(fecha), id_estacion) %>% 
+#   mutate(anom_mensual = Anomaly(tmean_mensual, na.rm = TRUE)) %>% 
+#   ungroup() %>% 
+#   left_join(ubicacion) 
+
+meteo_mean <- meteo %>% 
+  mutate(tmean = (t_max + t_min)/2) %>% 
+  group_by(fecha = year(fecha), id_estacion) %>%
+  summarise(tmean_mensual = mean(tmean, na.rm = TRUE)) %>% 
+  group_by(id_estacion) %>% 
+  mutate(anom_mensual = Anomaly(tmean_mensual, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  left_join(ubicacion) 
+```
+
+```{r}
+map <- rnaturalearth::ne_states(country = c("argentina", "Brazil", "Chile", "Uruguay", "Paraguay", "Bolivia"), returnclass = "sf")
+n <- length(unique(meteo_mean$fecha))*3
+fps <- 10
+duration <- 20
+
+map_anom <- meteo_mean %>% 
+  ggplot(aes(lon, lat)) +
+  geom_sf(data = map, inherit.aes = FALSE) +
+  coord_sf(ylim = c(-39, -20), xlim = c(-72, -55)) +
+  geom_point(aes(fill = anom_mensual, size = anom_mensual), shape = 21) +
+  scale_fill_divergent("Anomalía de \n temp anual") +
+  scale_size_area(max_size = 6, guide = "none") +
+  labs(title = "Año: {round(frame_time)}", x = "lon", y = "Lat") +
+  transition_time(fecha)
+
+map_anom <- animate(map_anom, nframes = n, duration = duration, width = 480, height = 340)
+```
+
+```{r}
+serie <- meteo_mean %>% 
+  # filter(between(fecha, as.Date("1992-01-01"), as.Date("2012-12-01"))) %>% 
+  group_by(fecha) %>% 
+  summarise(anomalia = mean(anom_mensual, na.rm = TRUE)) %>% 
+  ggplot(aes(fecha, anomalia)) +
+  geom_hline(yintercept = 0, color = "darkgray") +
+  geom_line() +
+  scale_x_continuous("Año") +
+  scale_y_continuous("Anomalía") +
+  transition_reveal(fecha)
+
+serie <- animate(serie, nframes = n, duration = duration, width = 480, height = 170)
+```
+
+```{r}
+a_mgif <- image_read(map_anom)
+b_mgif <- image_read(serie)
+
+new_gif <- image_append(c(a_mgif[1], b_mgif[1]), stack = TRUE)
+for(i in 2:n){
+  combined <- image_append(c(a_mgif[i], b_mgif[i]), stack = TRUE)
+  new_gif <- c(new_gif, combined)
+}
+save_animation(new_gif, "map-time.gif")
+```
+
