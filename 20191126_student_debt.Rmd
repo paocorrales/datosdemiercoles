@@ -1,0 +1,88 @@
+---
+title: "20191126_student_debt"
+author: "Pao"
+date: "11/26/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+```
+
+## Student Loan Payments
+
+Esta vez visito al primo hermano de datos de miércoles, [TidyTuesday](https://github.com/rfordatascience/tidytuesday/). Y tengo cero ideas sobre prestamos :|
+
+```{r}
+loans <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-11-26/loans.csv")
+```
+
+Empecemos por entender que es cada cosa:
+
+* agency_name: agencias que prestas plata?
+* year: solo dos dígitos, algo se va a poder hacer
+* quarter: lubridate tiene alguna fución para esto
+* starting: cantidad de plata prestada al comienzo del trimestre?
+* added: prestamos nuevos durante el trimestre?
+* total: total de plata devuelta a las agencias, asumo que la suma de las siguientes columnas o algo así
+* consolidation: 	algo así como los prestamos que se debían y se están intentando pagar de nuevo, como una moratoria?
+* rehabilitation: 	cuando pagaste consecutivamente y te sacan de la lista negra
+* voluntary_payments 	pagos
+* wage_garnishments: pagos recibidos por salarios embargados
+
+Veamos como se comportan estas variable a lo largo del tiempo. Necesito una nueva variable que unifique año y trimestre.
+
+```{r}
+loans <- loans %>% 
+  mutate(date = yq(paste((year+2000), quarter)))
+
+loans_long <- loans %>% 
+  pivot_longer(starting:wage_garnishments, names_to = "variable") 
+
+loans_long %>% 
+  group_by(date, variable) %>% 
+  summarise(total = sum(value, na.rm = TRUE)) %>% 
+  ggplot(aes(date, total)) +
+  geom_line(aes(color = variable)) +
+  scale_color_viridis_d() 
+
+```
+
+Parece que los prestamos que arrancan suman mucho más que todo el resto. De hecho no estaría entendiendo de donde sacan la plata porque el total devuelto no se parece a lo que arranca todos los trimestres. Veamos si al menos total = a todas las otras variables que tienen que ver con pagos.
+
+```{r}
+loans %>% 
+  mutate(resto = total - consolidation - rehabilitation - voluntary_payments - voluntary_payments ) %>% 
+  group_by(date) %>% 
+  summarise(resto = sum(resto, na.rm = TRUE)) %>% 
+  ggplot(aes(date, resto)) +
+  geom_line() 
+```
+
+Lo interesante es que si bien el total no es lo que yo pensaba, el "resto" se mantine más o menos constante excepto en el 3er trimestre del 2017 donde bajó un montón. 
+
+Ok, dead end. Vamos para otro lado. Analicemos que pasa en terminos de las agencias, los prestamos estarán bien repartidos o habrá pocas agencias que abarcan mucho? 
+
+```{r}
+loans %>% 
+  mutate(agency_name = fct_lump(agency_name, 10)) %>%
+  mutate(agency_name = fct_reorder(agency_name, total, max)) %>% 
+  ggplot(aes(date, agency_name)) +
+  geom_point(aes(size = total))
+```
+
+Las agencias que abarcan la mayor cantidad de plata en prestamos parecen haber tenido problemas en los últimos años, si los datos están completos. Mientas que hay nuevas agencias que empezaron a surgir desde 2017. Otra cosa que podría ser interesante de ver son las variables *consolidation* y *rehabilitation* porque tienen que ver con cuanto se "recuperaron" los estudiantes en términos de sus deudas.
+
+```{r}
+loans %>% 
+  pivot_longer(consolidation:rehabilitation) %>% 
+  group_by(date, name) %>%
+  summarise(acumulado = sum(value, na.rm = TRUE)) %>% 
+  ggplot(aes(date, acumulado)) +
+  geom_line(aes(color = name))
+```
+
+Parece que tanto las rehabilitaciones como las consolidaciones vienen creciendo. Es curioso que las consolidaciones tienen mínimos al principio de cada año/final del anterior y las rehabilitaciones se comportan al revez. No tengo idea de como funcionan los prestamos, ya lo demostré, pero capaz tiene que ver con que los prestamos "evolucionan" de una categoría a otra?
