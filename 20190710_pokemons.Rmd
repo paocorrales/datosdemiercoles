@@ -1,0 +1,90 @@
+---
+title: "20190710_Pokemon"
+author: "Pao"
+date: "12/9/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+## Pokemons!!
+
+La base de datos parece tener 800 pokemons pero hay 65 que tienen el mismo ID_poke, no muy útil. Lo bueno es que cada uno tiene un nombre único (al menos en inglés)
+
+```{r}
+pokemon <- readr::read_csv("https://raw.githubusercontent.com/cienciadedatos/datos-de-miercoles/master/datos/2019/2019-07-10/pokemon.csv")
+
+pokemon %>% 
+  count(ID_poke) %>% 
+  filter(n > 1)
+
+pokemon %>% 
+  count(nombre_ingles) %>% 
+  filter(n > 1)
+```
+Me interesa ver como se relaciona el nivel de evolución con la cantidad total de puntos. Ok, parece que muchos no tienen un nivel de evolución asociado. 
+```{r}
+pokemon %>% 
+  ggplot(aes(factor(nivel_evolucion), total)) +
+  geom_boxplot() +
+  coord_flip()
+```
+
+La mediana crece con el nivel de evolución, lo que suena correcto. Y además la mediana es mayor en el caso de los pokemon sin nivel de evolución, según el diccionario son polemons de "forma única".
+
+Veamos que sucede con el puntaje total cuando miramos según el tipo. Acá puede ser complicado tener en cuenta que algunos bichos tienen más de un tipo. De hecho casi la mitad tiene 2 tipos. Veamos si se repiten entre las variables tipo_1 y tipo_2 o son distintos.
+
+```{r}
+tipo_1 <- pokemon %>% 
+  distinct(tipo_1)
+
+pokemon %>% 
+  filter(!is.na(tipo_2)) %>% 
+  anti_join(tipo_1, by = c("tipo_2" = "tipo_1")) %>% 
+  distinct(tipo_2)
+```
+
+Todas las categorías presentes en tipo_2, también están presentes en tipo_1. Por ahora vamos a ausmilar que el tipo_1 es el principal y listo. Parece que el tipo dragón es el más "poderoso" en general. 
+
+```{r}
+pokemon %>% 
+  mutate(tipo_1 = fct_reorder(tipo_1, total)) %>% 
+  ggplot(aes(tipo_1, total)) +
+  geom_boxplot() +
+  coord_flip()
+
+pokemon %>% 
+  pivot_longer(puntos_vida:velocidad) %>% 
+  ggplot(aes(tipo_1, value)) +
+  geom_col(aes(fill = name), position = "fill") +
+  coord_flip()
+```
+
+
+```{r}
+pokemon %>% 
+  group_by(tipo_1, tipo_2) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(tipo_1, tipo_2)) +
+  geom_raster(aes(fill = n)) +
+  scale_fill_viridis_c() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+Vi unnos gráficos re lindos que resumen las características de cada pokemon, vamos a intentarlo.
+
+```{r}
+pokemon %>% 
+  filter(nombre_ingles %in% c("Pikachu", "Charmander", "Mewtwo Mega X")) %>% 
+  pivot_longer(puntos_vida:velocidad) %>% 
+  ggplot(aes(name, value)) +
+  geom_line(aes(group = nombre_ingles, color = nombre_ingles)) +
+  labs(color = "Pokemon",
+       x = "") +
+  coord_polar()
+```
+
