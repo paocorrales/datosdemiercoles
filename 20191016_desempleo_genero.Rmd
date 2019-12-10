@@ -1,0 +1,94 @@
+---
+title: "20191016_desempleo_genero"
+author: "Pao"
+date: "December 10, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+```
+
+## Empleo y genero
+
+```{r}
+empleo_genero <- readr::read_csv("https://raw.githubusercontent.com/cienciadedatos/datos-de-miercoles/master/datos/2019/2019-10-16/empleo_genero.csv")   %>% 
+  pivot_longer(cols = `1970`:`2018`, names_to = "anio") %>% 
+  pivot_wider(names_from = variable, values_from = value) %>% 
+  pivot_longer(c(empleadoras_mujeres:empleo_informal_hombres, autoempleo_mujeres:trabajo_domestico_no_remunerado_hombres), names_to = "variable") %>%
+  separate(variable, sep = -7, into = c("variable", "genero"), extra = "merge") %>% 
+  mutate(variable = str_remove(variable, "_$")) %>% 
+  mutate(variable = if_else(variable == "empleadoras", "empleadores", variable),
+         anio = as.numeric(anio))
+```
+
+Vamos a empezar por lo simple, Argentina.
+
+```{r}
+empleo_genero %>% 
+  filter(pais_region == "Argentina" & anio >= 1990) %>% 
+  filter(!variable %in% c("trabajo_domestico_no_remunerado", "desempleo_educacion")) %>% 
+  ggplot(aes(anio, value)) +
+  geom_line(aes(color = variable, linetype = factor(genero))) +
+  scale_color_viridis_d() +
+  scale_x_continuous(breaks = seq(1990, 2018, 5)) +
+  labs(title = "Evolución del empleo/desempleo en Argentina",
+       subtitle = "Desde 1990",
+       y = "Porcentaje respecto del total de hombres/mujeres",
+       linetype = "genero") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+En general los hombres tienen msá trabajo que las mujeres excepto cuando se trata de trabajo informal y en servicios. Veamos cuantas horas dedican al trabajo doméstico.
+
+```{r}
+empleo_genero %>% 
+  filter(pais_region == "Argentina") %>% 
+  filter(variable == "trabajo_domestico_no_remunerado" & value <= 100) %>% 
+  ggplot(aes(factor(anio), value)) +
+  geom_col(aes(fill = factor(genero)), position = "dodge")
+```
+
+Objetivo: aprender a graficar un mapa que muestre los porcentajes de, por ejemplo, desempleo como colores en cada país. Podría hacer una animación pero vamos a dejar de procrastinar. 
+
+```{r}
+mapa <- map_data("world") %>% 
+  mutate(codigo_pais_region = countrycode::countrycode(mapa$region, origin = "country.name", destination = "iso3c"))
+
+desempleo <- empleo_genero %>% 
+  filter(variable == "desempleo") %>% 
+  left_join(mapa)
+
+desempleo %>% 
+  # filter(!is.na(value)) %>% 
+  filter(genero == "mujeres", anio == 2017) %>% 
+  # distinct(codigo_pais_region, anio)
+  ggplot(aes(long, lat, group = group)) +
+  geom_polygon(aes(fill = value)) +
+  labs(title = "Procentaje de desempleo", 
+       subtitle = "Año 2017",
+       fill = "") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+Que países  tienen la mayor desigualdad ené trminos de desempleo?
+
+```{r}
+paises_limitrofes <- c("Argentina", "Chile", "Brasil", "Paraguay", "Bolivia", "Uruguay")
+
+empleo_genero %>% 
+  filter(variable %in% c("desempleo"),
+         value <= 100) %>%
+  pivot_wider(names_from = "genero", values_from = "value") %>% 
+  mutate(ratio_desempleo = mujeres/hombres) %>% # >1 más desempleadas mujeres
+  mutate(pais_region = fct_reorder(pais_region, ratio_desempleo)) %>% 
+  ggplot(aes(anio, pais_region)) +
+  geom_point(aes(size = ratio_desempleo, color = ratio_desempleo > 1), alpha = 0.5) +
+  scale_size_area(max_size = 3)
+```
+
