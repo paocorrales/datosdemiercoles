@@ -1,0 +1,71 @@
+---
+title: "20190206_french_trains"
+author: "Pao"
+date: "December 10, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Trains!
+
+```{r}
+trains <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-26/full_trains.csv")
+```
+
+```{r}
+trains %>% 
+  group_by(departure_station) %>% 
+  summarise(mean_delay = mean(avg_delay_all_departing),
+            max_delay = max(avg_delay_all_departing)) %>% 
+  arrange(desc(mean_delay))
+
+trains %>% 
+  select(starts_with("avg_delay_all")) %>% 
+  pivot_longer(everything()) %>% 
+  ggplot(aes(value)) +
+  geom_histogram(aes(fill = name), binwidth = 1) +
+  coord_cartesian(xlim = c(-20, 20))
+```
+
+```{r}
+trains %>% 
+  mutate(route = paste(departure_station, arrival_station, sep = "-")) %>% 
+  pivot_longer(cols = starts_with("delay_cause"), names_to = "delay_cause", values_to = "cause_per") %>% 
+  separate(delay_cause, into = c(NA, "delay_cause"), sep = "cause_") %>% 
+  group_by(route, delay_cause) %>% 
+  summarise(total_cancelations = sum(num_of_canceled_trains),
+            total_trips = sum(total_num_trips),
+            ratio = total_cancelations/total_trips, 
+            cause_per = mean(cause_per, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  top_frac(0.15, ratio) %>% 
+  # arrange(desc(ratio))
+  ggplot(aes(fct_reorder(route, ratio), cause_per)) +
+  geom_col(aes(fill = delay_cause)) +
+  scale_fill_viridis_d() +
+  coord_flip()
+```
+
+```{r}
+trains %>% 
+  mutate(date = lubridate::make_date(year, month, day = 1L)) %>% 
+  group_by(departure_station) %>% 
+  summarise(mean_delay = mean(avg_delay_late_at_departure)) %>% 
+  top_n(20) -> top
+
+trains %>% 
+  semi_join(top) %>% 
+  mutate(date = lubridate::make_date(year, month, day = 1L)) %>% 
+  group_by(departure_station, date) %>% 
+  summarise(mean_delay = mean(avg_delay_late_at_departure)) %>% 
+  ungroup() %>% 
+  ggplot(aes(date, mean_delay)) +
+  geom_line(aes(color = departure_station))
+  
+  distinct(departure_station)
+```
+
